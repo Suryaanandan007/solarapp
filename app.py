@@ -1,6 +1,6 @@
 from datetime import datetime
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import streamlit as st
 
 # Page Configuration
@@ -22,7 +22,7 @@ def init_db():
   engine = get_engine()
   with engine.begin() as conn:
     conn.execute(
-        """
+        text("""
         CREATE TABLE IF NOT EXISTS projects (
             project_id TEXT PRIMARY KEY,
             customer_name TEXT,
@@ -34,7 +34,7 @@ def init_db():
             current_stage TEXT,
             last_updated TEXT
         )
-    """
+    """)
     )
 
 
@@ -143,11 +143,17 @@ if menu == "📊 Summary Dashboard":
           if st.button("Save Stage Update", key=f"btn_{row['project_id']}"):
             with engine.begin() as conn:
               conn.execute(
-                  f"""
-                            UPDATE projects 
-                            SET current_stage = '{new_stage}', last_updated = '{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}' 
-                            WHERE project_id = '{row['project_id']}'
-                        """
+                  text(
+                      "UPDATE projects SET current_stage = :stage, last_updated"
+                      " = :updated WHERE project_id = :pid"
+                  ),
+                  {
+                      "stage": new_stage,
+                      "updated": datetime.now().strftime(
+                          "%Y-%m-%d %H:%M:%S"
+                      ),
+                      "pid": row["project_id"],
+                  },
               )
             st.success(
                 f"Updated {row['customer_name']} to '{new_stage}' successfully!"
@@ -210,10 +216,21 @@ elif menu == "📝 Register New Lead/Project":
 
         with engine.begin() as conn:
           conn.execute(
-              f"""
+              text("""
                     INSERT INTO projects (project_id, customer_name, phone, location, capacity_kw, pan_number, id_details, current_stage, last_updated)
-                    VALUES ('{new_id}', '{customer_name}', '{phone}', '{location}', {capacity_kw}, '{pan_number}', '{id_details}', '{initial_stage}', '{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-                """
+                    VALUES (:pid, :name, :phone, :loc, :cap, :pan, :id_det, :stage, :updated)
+                """),
+              {
+                  "pid": new_id,
+                  "name": customer_name,
+                  "phone": phone,
+                  "loc": location,
+                  "cap": capacity_kw,
+                  "pan": pan_number,
+                  "id_det": id_details,
+                  "stage": initial_stage,
+                  "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+              },
           )
         st.success(
             f"Project successfully saved to Solardome cloud database! (ID:"
