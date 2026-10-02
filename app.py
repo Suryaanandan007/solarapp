@@ -1,5 +1,6 @@
 from datetime import datetime
 import pandas as pd
+import psycopg2
 import streamlit as st
 
 # 1. Page Configuration & Styling
@@ -7,7 +8,6 @@ st.set_page_config(
     page_title="SolarDome Project Tracker", page_icon="☀️", layout="wide"
 )
 
-# Custom CSS for modern visual UI
 st.markdown(
     """
     <style>
@@ -34,21 +34,77 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize Session State Data
-if "projects_df" not in st.session_state:
-    st.session_state.projects_df = pd.DataFrame(
-        columns=[
-            "Project_ID",
-            "Customer_Name",
-            "Phone",
-            "Location",
-            "Capacity_kW",
-            "PAN_Number",
-            "ID_Details",
-            "Current_Stage",
-            "Last_Updated",
-        ]
+
+# Database Connection Function
+def get_connection():
+    return psycopg2.connect(st.secrets["postgres"]["url"])
+
+
+# Load Data from Cloud Database
+def load_data():
+    try:
+        conn = get_connection()
+        query = "SELECT * FROM projects"
+        df = pd.read_sql(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        # Fallback empty dataframe if table is empty or connection fails
+        return pd.DataFrame(
+            columns=[
+                "project_id",
+                "customer_name",
+                "phone",
+                "location",
+                "capacity_kw",
+                "pan_number",
+                "id_details",
+                "current_stage",
+                "last_updated",
+            ]
+        )
+
+
+# Save New Project to Cloud Database
+def insert_project(data):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO projects (project_id, customer_name, phone, location, capacity_kw, pan_number, id_details, current_stage, last_updated)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """,
+        (
+            data["project_id"],
+            data["customer_name"],
+            data["phone"],
+            data["location"],
+            data["capacity_kw"],
+            data["pan_number"],
+            data["id_details"],
+            data["current_stage"],
+            data["last_updated"],
+        ),
     )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# Update Stage in Cloud Database
+def update_project_stage(project_id, new_stage, timestamp):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        UPDATE projects SET current_stage = %s, last_updated = %s WHERE project_id = %s
+    """,
+        (new_stage, timestamp, project_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
 
 # Define Solar Stages in Exact Order
 SOLAR_STAGES = [
@@ -67,7 +123,7 @@ SOLAR_STAGES = [
 # Sidebar Brand Header & Quick WhatsApp Info
 st.sidebar.markdown("## ☀️ SOLARDOME")
 st.sidebar.markdown(
-    "<p style='color: gray; font-size: 0.9rem;'>Private Limited — Project & Lead Management</p>",
+    "<p style='color: gray; font-size: 0.9rem;'>Private Limited — Live Shared Database</p>",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown("---")
@@ -96,11 +152,11 @@ if menu == "📊 Summary Dashboard":
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p class='sub-header'>Executive Summary & Real-Time Project Pipeline</p>",
+        "<p class='sub-header'>Live Multi-User Project Pipeline</p>",
         unsafe_allow_html=True,
     )
 
-    df = st.session_state.projects_df
+    df = load_data()
 
     if df.empty:
         st.info(
@@ -108,9 +164,11 @@ if menu == "📊 Summary Dashboard":
         )
     else:
         total_projects = len(df)
-        total_capacity = df["Capacity_kW"].sum()
+        total_capacity = (
+            df["capacity_kw"].sum() if not df.empty else 0.0
+        )
         completed_projects = len(
-            df[df["Current_Stage"].isin(["Work Completed", "Handover"])]
+            df[df["current_stage"].isin(["Work Completed", "Handover"])]
         )
         in_progress_projects = total_projects - completed_projects
 
@@ -136,46 +194,42 @@ if menu == "📊 Summary Dashboard":
         )
 
         if selected_stage_filter != "All Stages":
-            filtered_df = df[df["Current_Stage"] == selected_stage_filter]
+            filtered_df = df[df["current_stage"] == selected_stage_filter]
         else:
             filtered_df = df
 
         for idx, row in filtered_df.iterrows():
             with st.expander(
-                f"📌 {row['Customer_Name']} | 📍 {row['Location']} | ⚡ {row['Capacity_kW']} kW — Stage: **{row['Current_Stage']}**"
+                f"📌 {row['customer_name']} | 📍 {row['location']} | ⚡ {row['capacity_kw']} kW — Stage: **{row['current_stage']}**"
             ):
                 col_info, col_update = st.columns([2, 1])
 
                 with col_info:
-                    st.write(f"**Project ID:** `{row['Project_ID']}`")
-                    st.write(f"**Phone Number:** {row['Phone']}")
-                    st.write(f"**PAN Number:** {row['PAN_Number']}")
-                    st.write(f"**ID Details:** {row['ID_Details']}")
-                    st.write(f"**Last Status Update:** {row['Last_Updated']}")
+                    st.write(f"**Project ID:** `{row['project_id']}`")
+                    st.write(f"**Phone Number:** {row['phone']}")
+                    st.write(f"**PAN Number:** {row['pan_number']}")
+                    st.write(f"**ID Details:** {row['id_details']}")
+                    st.write(f"**Last Status Update:** {row['last_updated']}")
 
                 with col_update:
                     new_stage = st.selectbox(
                         "Update Project Stage",
                         SOLAR_STAGES,
-                        index=SOLAR_STAGES.index(row["Current_Stage"]),
-                        key=f"stage_{row['Project_ID']}",
+                        index=SOLAR_STAGES.index(row["current_stage"]),
+                        key=f"stage_{row['project_id']}",
                     )
 
                     if st.button(
-                        "Save Status Update", key=f"btn_{row['Project_ID']}"
+                        "Save Status Update", key=f"btn_{row['project_id']}"
                     ):
-                        st.session_state.projects_df.loc[
-                            st.session_state.projects_df["Project_ID"]
-                            == row["Project_ID"],
-                            "Current_Stage",
-                        ] = new_stage
-                        st.session_state.projects_df.loc[
-                            st.session_state.projects_df["Project_ID"]
-                            == row["Project_ID"],
-                            "Last_Updated",
-                        ] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        timestamp = datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                        update_project_stage(
+                            row["project_id"], new_stage, timestamp
+                        )
                         st.success(
-                            f"Successfully updated status for {row['Customer_Name']}!"
+                            f"Successfully updated status for {row['customer_name']}!"
                         )
                         st.rerun()
 
@@ -188,7 +242,7 @@ elif menu == "📝 Register New Lead/Project":
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p class='sub-header'>Capture customer credentials and track profile requirements</p>",
+        "<p class='sub-header'>Syncs instantly across all staff devices</p>",
         unsafe_allow_html=True,
     )
 
@@ -217,43 +271,35 @@ elif menu == "📝 Register New Lead/Project":
             )
 
         st.markdown("---")
-        st.markdown(
-            "### 📌 Note: Document Collection Reminder for this Project"
-        )
+        st.markdown("### 📌 Document Collection Reminder")
         st.info(
-            "Make sure to collect all required documents (Aadhaar, PAN, KSEB Bill, Tax Receipts, Passbook, and Geo-tagged photo) and have the customer share them via our WhatsApp group or direct number."
+            "Ensure all required documents are collected and shared in the WhatsApp group."
         )
 
         submitted = st.form_submit_button(
-            "🚀 Save & Register Project to Dashboard"
+            "🚀 Save & Register Project to Cloud Database"
         )
 
         if submitted:
             if customer_name and phone:
                 new_id = f"SD-{int(datetime.now().timestamp())}"
                 new_row = {
-                    "Project_ID": new_id,
-                    "Customer_Name": customer_name,
-                    "Phone": phone,
-                    "Location": location,
-                    "Capacity_kW": capacity_kw,
-                    "PAN_Number": pan_number,
-                    "ID_Details": id_details,
-                    "Current_Stage": initial_stage,
-                    "Last_Updated": datetime.now().strftime(
+                    "project_id": new_id,
+                    "customer_name": customer_name,
+                    "phone": phone,
+                    "location": location,
+                    "capacity_kw": capacity_kw,
+                    "pan_number": pan_number,
+                    "id_details": id_details,
+                    "current_stage": initial_stage,
+                    "last_updated": datetime.now().strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
                 }
 
-                st.session_state.projects_df = pd.concat(
-                    [
-                        st.session_state.projects_df,
-                        pd.DataFrame([new_row]),
-                    ],
-                    ignore_index=True,
-                )
+                insert_project(new_row)
                 st.success(
-                    f"Project successfully registered under Solardome Private Limited! (ID: {new_id})"
+                    f"Project successfully saved to Solardome cloud database! (ID: {new_id})"
                 )
             else:
                 st.error("Please enter at least the Customer Name and Phone.")
@@ -267,7 +313,7 @@ elif menu == "📋 Document Checklist & WhatsApp":
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p class='sub-header'>Share this checklist with clients or staff to ensure all paperwork is collected</p>",
+        "<p class='sub-header'>Share with team members and clients</p>",
         unsafe_allow_html=True,
     )
 
