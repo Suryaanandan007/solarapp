@@ -9,11 +9,18 @@ st.set_page_config(
 )
 
 
-# Initialize Database Connection via SQLAlchemy (optimized for Supabase)
+# Initialize Database Connection via SQLAlchemy (forced psycopg2 driver for Supabase)
 def get_engine():
   db_url = st.secrets["postgres"]["url"]
   if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+  # Explicitly force SQLAlchemy to use the psycopg2 driver
+  if db_url.startswith("postgresql://") and not db_url.startswith(
+      "postgresql+psycopg2://"
+  ):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
   return create_engine(db_url)
 
 
