@@ -209,7 +209,7 @@ elif menu == "📁 Document Checklist & WhatsApp":
         * **2. PAN Card** (For tax & financial compliance)
         * **3. KSEB Registered Phone Number** (Linked with consumer portal)
         * **4. KSEB Electricity Bill** (Recent copy showing consumer number & sanctioned load)
-        """)[cite: 1]
+        """)
         
     with col_b:
         st.markdown("""
