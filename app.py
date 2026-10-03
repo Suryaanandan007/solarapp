@@ -59,7 +59,7 @@ st.sidebar.markdown("Private Limited — Live Shared Database")
 st.sidebar.markdown("---")
 st.sidebar.subheader("📞 Quick Support & Share")
 st.sidebar.write("WhatsApp No: `9961331176`")
-st.sidebar.markdown("[🔗 Join WhatsApp Group](https://chat.whatsapp.com/gQQxFKC6MP33SAAA99hahN)")[cite: 1]
+st.sidebar.markdown("[🔗 Join WhatsApp Group](https://chat.whatsapp.com/gQQxFKC6MP33SAAA99hahN)")
 st.sidebar.markdown("---")
 
 # Navigation Menu
