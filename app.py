@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="Solardome Operations",
     page_icon="☀️",
     layout="wide",
-    initial_sidebar_state="collapsed",  # Keep screen clear on mobile screens
+    initial_sidebar_state="collapsed",
 )
 
 # 2. Touch-Friendly CSS
@@ -136,7 +136,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 5. Mobile Navigation Bar (Always visible at the top)
+# 5. Mobile Navigation Bar
 menu_options = [
     "📊 Projects",
     "➕ New Lead",
@@ -179,10 +179,20 @@ if selected_tab == "📊 Projects":
   if df.empty:
     st.info("💡 No entries found. Tap **➕ New Lead** above to add a client.")
   else:
-    # 2x2 Quick Metrics Grid
-    c1, c2 = st.columns(2)
-    c1.metric("Total Installations", len(df))
-    c2.metric("Total Load", f"{df['capacity_kw'].sum():.1f} kW")
+    # KPI Metric Cards including Completed and Load
+    total_installs = len(df)
+    total_load = df["capacity_kw"].sum()
+    completed_count = len(df[df["current_stage"] == "Handover"])
+    in_progress_count = total_installs - completed_count
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Installations", total_installs)
+    c2.metric("Total Load", f"{total_load:.1f} kW")
+    c3.metric(
+        "Total Completed",
+        completed_count,
+        delta=f"{in_progress_count} in progress",
+    )
 
     # Search & Filter
     search_query = st.text_input(
@@ -216,7 +226,6 @@ if selected_tab == "📊 Projects":
       stage_idx = SOLAR_STAGES.index(cur_stage)
       progress_pct = int(((stage_idx + 1) / len(SOLAR_STAGES)) * 100)
 
-      # Clean card title
       card_label = (
           f"⚡ {row['customer_name']} — {row['capacity_kw']} kW ({row['location']})"
       )
